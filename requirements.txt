@@ -1,0 +1,2 @@
+# B.LEAGUE public-site data adapter (pre-release API, subject to change)
+sportsdataverse>=0.2.0b0,<0.3

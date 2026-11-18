@@ -1,0 +1,67 @@
+name: Update B.LEAGUE data and publish
+on:
+  # Every 2h, with extra hourly checks around evening games (JST).
+  schedule:
+    - cron: '27 */2 * * *'
+    - cron: '27 7,9,11,13,15 * * *'
+  workflow_dispatch:
+    inputs:
+      backfill:
+        description: 'Recheck the full season (true / false)'
+        required: false
+        type: boolean
+        default: false
+concurrency:
+  group: bleague-stats-update
+  cancel-in-progress: false
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+jobs:
+  sync-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - name: Install data source
+        run: pip install --pre -r requirements.txt
+      - name: Refresh completed games
+        shell: bash
+        env:
+          BACKFILL: ${{ inputs.backfill }}
+        run: |
+          if [ "$BACKFILL" = "true" ]; then
+            python scripts/update_stats.py --backfill || echo 'WARNING: some games could not be synced; see logs'
+          else
+            python scripts/update_stats.py --recent-days 4 || echo 'WARNING: some games could not be synced; see logs'
+          fi
+      - name: Save the incremental cache and new public stats
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -f cache/games_2026-27.json site/data.js 2>/dev/null || git add site/data.js
+          if ! git diff --staged --quiet; then
+            git commit -m 'Update 2026-27 B.LEAGUE stats'
+            git pull --rebase origin "${GITHUB_REF_NAME}"
+            git push origin HEAD:"${GITHUB_REF_NAME}"
+          fi
+      - name: Setup GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Upload static site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - name: Deploy GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

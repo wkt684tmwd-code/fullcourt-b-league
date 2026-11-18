@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#0b0e18">
+<meta name="description" content="B.PREMIER・B.ONEの51クラブを網羅。選手・クラブ成績、全指標ランキング、ゲームログ、比較をひとつに。">
+<title>FULLCOURT DATA | B.LEAGUE Stats & Analytics</title>
+<link rel="stylesheet" href="styles.css">
+<script defer src="data.js"></script>
+<script defer src="app.js"></script>
+</head>
+<body>
+<div class="shell">
+  <div class="utility-line"><span><span class="utility-glow"></span> THE BASKETBALL DATA PLATFORM</span><span>独立した非公式ファン向け統計サイト <span class="utility-division">/</span> SEASON 2026 — 2027</span></div>
+  <aside class="side" aria-label="サイトナビゲーション">
+    <div class="brand" data-view="overview" role="button" tabindex="0" aria-label="ホームに戻る"><div class="brand-mark">F<span>.</span></div><div class="brand-text"><b>FULLCOURT</b><small>B.LEAGUE DATA HUB</small></div></div>
+    <nav class="nav" aria-label="メインメニュー">
+      <button class="nav-item active" data-view="overview"><span class="nav-icon">◈</span><span>ホーム</span></button>
+      <button class="nav-item" data-view="players"><span class="nav-icon">◉</span><span>選手</span></button>
+      <button class="nav-item" data-view="teams"><span class="nav-icon">▦</span><span>クラブ</span></button>
+      <button class="nav-item" data-view="rankings"><span class="nav-icon">↗</span><span>ランキング</span></button>
+      <button class="nav-item" data-view="games"><span class="nav-icon">▤</span><span>試合</span></button>
+      <button class="nav-item" data-view="compare"><span class="nav-icon">⇄</span><span>比較</span></button>
+    </nav>
+    <div class="side-bottom"><div class="sync-card"><span id="sync-dot" class="sync-dot"></span><div class="sync-words"><b id="sync-title">読み込み中</b><small id="sync-time">確認中</small></div></div></div>
+  </aside>
+  <main class="main">
+    <div class="topbar"><div class="top-left"><button class="mobile-brand" id="mobile-menu" aria-label="メニューを開閉" aria-expanded="false">☰</button><span class="breadcrumb">FULLCOURT <span>/</span> DATA & ANALYTICS</span></div><div class="top-right"><span class="season-chip"><span class="tiny-dot"></span> 2026–27 SEASON</span><button id="reload-btn" class="icon-btn" title="最新データを再読み込み" aria-label="再読み込み">↻</button></div></div>
+    <div class="content">
+      <div class="header-block"><div class="hero-copy"><div class="eyebrow"><span class="eyebrow-mark">●</span> THE GAME. IN NUMBERS. <span class="slash">/</span> 2026–27</div><h1 id="view-title">リーグダッシュボード</h1><p id="view-description" class="subtitle">B.PREMIERとB.ONE。バスケットボールを、数字からもっと面白く。</p><div class="hero-badges"><span><b>51</b> CLUBS</span><i></i><span><b>2</b> LEAGUES</span><i></i><span><b>40+</b> METRICS</span></div></div><div class="hero-art" aria-hidden="true"><div class="art-rings"></div><div class="art-ball">B<span>·</span></div><div class="art-corner">COURTSIDE<br>ANALYTICS<br>EST. 2026</div><div class="art-script">THE NUMBERS<br>BEHIND THE GAME.</div></div></div>
+      <div class="control-strip"><div class="league-switch" role="group" aria-label="対象リーグ"><button id="league-premier" class="active" data-league="premier">B.PREMIER</button><button id="league-one" data-league="one">B.ONE</button></div><span class="vertical-line"></span><span class="control-note" id="league-info">レギュラーシーズン</span><div class="right-meta"><span class="meta-pulse" id="data-state">取得状況を確認中</span><button id="export-btn" class="btn btn-line">↓ CSV出力</button></div></div>
+      <div id="notice" class="notice hidden" role="status"></div>
+      <section id="overview-view" class="view"></section>
+      <section id="players-view" class="view hidden"></section>
+      <section id="teams-view" class="view hidden"></section>
+      <section id="rankings-view" class="view hidden"></section>
+      <section id="games-view" class="view hidden"></section>
+      <section id="compare-view" class="view hidden"></section>
+      <footer class="footer"><div><strong>FULLCOURT<span>●</span></strong><p>試合と選手の数字を、ひとつの場所に。</p></div><div>B.LEAGUE公式とは無関係の非公式サイトです。<br>推定指標は公式値と異なる場合があります。<br><a href="https://www.bleague.jp/stats/" target="_blank" rel="noopener noreferrer">B.LEAGUE公式成績 ↗</a></div></footer>
+    </div>
+  </main>
+</div>
+<div id="overlay" class="overlay hidden" aria-hidden="true"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"><div class="modal-top"><div><div class="eyebrow" id="modal-overline">FULLCOURT / PROFILE</div><h2 id="modal-title">詳細成績</h2></div><button class="modal-close" id="modal-close" aria-label="閉じる">×</button></div><div id="modal-content"></div></div></div>
+<div id="toast" class="toast" role="status"></div>
+</body>
+</html>
