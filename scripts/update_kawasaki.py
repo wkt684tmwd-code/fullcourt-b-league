@@ -6,8 +6,8 @@ import logging
 from collections import defaultdict
 from pathlib import Path
 from zoneinfo import ZoneInfo
-from update_stats import table_rows, game_dates, get_adapter, normalize_name, SEASON, ROOT, save_atomic
-from sportsdataverse.basketball.bleague import bleague_pbp, bleague_player_box
+from update_stats import table_rows, get_adapter, normalize_name, SEASON, ROOT, save_atomic
+from sportsdataverse.basketball.bleague import bleague_pbp, bleague_player_box, bleague_game_info
 
 OUTPUT = ROOT / 'site' / 'kawasaki' / 'data.json'
 LOG = logging.getLogger('kawasaki')
@@ -26,8 +26,9 @@ def analyze(row, events, box):
     active = {p['id'] for p in players.values() if p['starter']}
     if not events or not players:
         raise ValueError('Missing official play-by-play or box score')
-    events = sorted(events,key=lambda e:(int(e['period']),int(e['event_no'])))
-    last_period = max(int(e['period']) for e in events)
+    # EventNo is the official global sequence; period 0 and game-level markers are not playing time.
+    events = sorted(events,key=lambda e:int(e['event_no']))
+    last_period = max(int(e['period']) for e in events if e.get('period') is not None and int(e['period']) >= 1 and int(e.get('action_code') or 0) not in (80,81))
     duration = 2400 + max(0,last_period-4)*300
     score = [0,0]
     last = 0
@@ -53,19 +54,34 @@ def analyze(row, events, box):
             unknown_points += sum(abs(x) for x in delta)
         last=t
     for e in events:
-        period=int(e['period'])
-        clock=e.get('clock_seconds')
-        if clock is None:
-            if int(e.get('action_code') or 0) in (86,87,89) or e.get('home_score') is not None:
-                warnings.append('Event missing clock')
+        code=int(e.get('action_code') or 0)
+        period=int(e.get('period') or 0)
+        own_sub=str(e.get('team_id')) == tid and code in (86,87,89)
+        # Clock-management markers may carry 00:00 before tip-off or a reset
+        # clock at a period boundary. They do not change the five on court.
+        if code in (80,81,82,83,84,85):
             continue
-        length=600 if period<=4 else 300
-        t=(period-1)*600 if period<=4 else 2400+(period-5)*300
-        t+=length-int(clock)
-        if not 0<=int(clock)<=length:
-            raise ValueError('Clock outside period')
         hs,aw=e.get('home_score'),e.get('away_score')
         new=[int(hs),int(aw)] if home and hs is not None and aw is not None else [int(aw),int(hs)] if hs is not None and aw is not None else score[:]
+        if not own_sub and new==score:
+            continue
+        if period<1:
+            if own_sub and code==86 and str(e.get('player_id')) in active:
+                continue  # pregame announcement of a confirmed starter
+            warnings.append('Playing event outside a period: '+str(e.get('event_no')))
+            continue
+        length=600 if period<=4 else 300
+        clock=e.get('clock_seconds')
+        if clock is None or not 0<=int(clock)<=length:
+            warnings.append('Missing or invalid event clock: '+str(e.get('event_no')))
+            t=last
+        else:
+            t=((period-1)*600 if period<=4 else 2400+(period-5)*300)+length-int(clock)
+        if t<last:
+            # Keep sequence and final-score validation. Do not present a
+            # rotation as verified when a meaningful event clock reverses.
+            warnings.append(f'Clock correction: event {e.get("event_no")} ({t}s < {last}s)')
+            t=last
         delta=[new[i]-score[i] for i in (0,1)]
         if any(x<0 for x in delta):
             warnings.append('Score correction in feed')
@@ -73,7 +89,6 @@ def analyze(row, events, box):
         if new!=score:
             score=new
             points.append({'t':t,'for':score[0],'against':score[1]})
-        code=int(e.get('action_code') or 0)
         if str(e.get('team_id')) == tid and code in (86,87,89):
             pid=str(e.get('player_id'))
             if code in (87,89):active.discard(pid)
@@ -107,6 +122,27 @@ def analyze(row, events, box):
     if unknown or unknown_points:warnings.append(f'Unresolved lineup: {unknown}s / {unknown_points} points')
     return {'id':key,'date':str(row['date'])[:10],'opponent':opponent,'home':home,'score':final,'duration':duration,'points':points,'players':list(players.values()),'segments':segments if valid else [],'lineups':list(lineups.values()) if valid else [],'changes':changes,'lineupVerified':valid,'warnings':list(dict.fromkeys(warnings)),'source':f'https://www.bleague.jp/game_detail/?ScheduleKey={key}&tab=3','checked':dt.datetime.now(dt.timezone.utc).isoformat()}
 
+# First 19 regular-season games: IDs observed in the actual workflow log.
+# The date/teams/final score are checked against official game headers.
+KNOWN_GAMES = dict(zip(
+    '2026-09-26 2026-09-27 2026-10-03 2026-10-04 2026-10-08 2026-10-10 2026-10-16 2026-10-19 2026-10-21 2026-10-24 2026-10-26 2026-10-31 2026-11-01 2026-11-06 2026-11-09 2026-11-11 2026-11-13 2026-11-16 2026-11-18'.split(),
+    '506391 506399 506405 506420 506437 506448 506464 506482 506489 506504 506510 506527 506538 506549 506562 506573 506581 506598 506611'.split()))
+# Remaining regular-season dates as published on the club's official 2026-27 schedule.
+# Update if the club announces rescheduling.
+FUTURE_DATES = '2026-12-06 2026-12-12 2026-12-13 2026-12-19 2026-12-20 2026-12-26 2026-12-27 2026-12-30 2027-01-01 2027-01-03 2027-01-22 2027-01-25 2027-01-27 2027-01-30 2027-01-31 2027-02-03 2027-02-05 2027-02-07 2027-02-11 2027-02-15 2027-02-17 2027-03-06 2027-03-07 2027-03-13 2027-03-14 2027-03-17 2027-03-19 2027-03-21 2027-03-24 2027-04-01 2027-04-04 2027-04-06 2027-04-09 2027-04-11 2027-04-13 2027-04-20 2027-04-23 2027-04-25 2027-04-28'.split()
+def header_row(key, date):
+    h=table_rows(bleague_game_info(schedule_key=int(key),season=SEASON))[0]
+    row={'schedule_key':key,'date':date}
+    for side in ('home','away'):
+        row[side+'_team']=h.get(side+'_team_name_j') or h.get(side+'_team_short_name_j')
+        row[side+'_team_id']=h[side+'_team_id']
+        row[side+'_score']=h[side+'_score']
+    if not any(normalize_name(row.get(k))=='川崎' for k in ('home_team','away_team')):
+        raise ValueError('Official header does not contain Kawasaki')
+    if row['home_score'] is None or row['away_score'] is None or row['home_score']==row['away_score']:
+        raise ValueError('Official final score unavailable')
+    return row
+
 def main():
     logging.basicConfig(level=logging.INFO)
     old=json.loads(OUTPUT.read_text(encoding='utf-8')) if OUTPUT.exists() else {'games':[]}
@@ -114,28 +150,34 @@ def main():
     now=dt.datetime.now(ZoneInfo('Asia/Tokyo')).date()
     adapter=get_adapter()
     errors=[]
-    for league,date in game_dates(adapter,now,True,4):
-        if league!='premier':continue
+    candidates={key:date for date,key in KNOWN_GAMES.items()}
+    for day in FUTURE_DATES:
+        date=dt.date.fromisoformat(day)
+        if date>now:continue
         try:
             schedule=table_rows(adapter['bleague_schedule'](season=SEASON,tab=1,month=date.month,day=date.day))
+            for row in schedule:
+                if not any(normalize_name(row.get(k))=='川崎' for k in ('home_team','away_team')):continue
+                state=str(row.get('state') or '').upper()
+                if not ('FINAL' in state or '終了' in state or state in ('END','FINISHED','GAME_END')):continue
+                if row.get('home_score') is None or row.get('away_score') is None or row['home_score']==row['away_score']:continue
+                candidates[str(row['schedule_key'])]=day
         except Exception as e:
-            if type(e).__name__!='NoDataError':errors.append(f'{date}: {e}')
-            continue
-        for row in schedule:
-            if not any(normalize_name(row.get(k))=='川崎' for k in ('home_team','away_team')):continue
-            state=str(row.get('state') or '').upper()
-            if not ('FINAL' in state or '終了' in state or state in ('END','FINISHED','GAME_END') or (date<now and row.get('home_score') is not None and row.get('away_score') is not None and state not in ('CANCELLED','CANCELED','中止','POSTPONED','延期'))):continue
-            if row.get('home_score') is None or row.get('away_score') is None or row['home_score']==row['away_score']:continue
-            key=str(row['schedule_key'])
-            if key in records and records[key]['lineupVerified'] and (now-date).days>3:continue
-            try:
-                events=table_rows(bleague_pbp(schedule_key=int(key),season=SEASON))
-                box=table_rows(bleague_player_box(schedule_key=int(key),season=SEASON))
-                records[key]=analyze(row,events,box)
-                LOG.info('Game %s: %s lineup verified=%s',key,records[key]['score'],records[key]['lineupVerified'])
-            except Exception as e:
-                errors.append(f'{date} {key}: {e}')
-                LOG.warning('%s: %s',key,e)
+            errors.append(f'{date}: {e}')
+            LOG.warning('%s: %s',date,e)
+    for key,day in candidates.items():
+        date=dt.date.fromisoformat(day)
+        if date>now:continue
+        if key in records and records[key]['lineupVerified'] and (now-date).days>3:continue
+        try:
+            row=header_row(key,day)
+            events=table_rows(bleague_pbp(schedule_key=int(key),season=SEASON))
+            box=table_rows(bleague_player_box(schedule_key=int(key),season=SEASON))
+            records[key]=analyze(row,events,box)
+            LOG.info('Game %s: %s lineup verified=%s warnings=%s',key,records[key]['score'],records[key]['lineupVerified'],records[key]['warnings'])
+        except Exception as e:
+            errors.append(f'{date} {key}: {e}')
+            LOG.warning('%s: %s',key,e)
     result={'updated':dt.datetime.now(dt.timezone.utc).isoformat(),'games':sorted(records.values(),key=lambda g:(g['date'],g['id']),reverse=True),'errors':errors}
     save_atomic(OUTPUT,result)
     if not records:raise SystemExit('No Kawasaki official game data obtained')
