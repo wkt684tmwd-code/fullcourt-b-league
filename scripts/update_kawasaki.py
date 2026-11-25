@@ -185,7 +185,22 @@ def main():
         except Exception as e:
             errors.append(f'{date} {key}: {e}')
             LOG.warning('%s: %s',key,e)
-    result={'updated':dt.datetime.now(dt.timezone.utc).isoformat(),'games':sorted(records.values(),key=lambda g:(g['date'],g['id']),reverse=True),'errors':errors}
+    # Preserve previously discovered future fixtures on a transient schedule failure.
+    upcoming={x['date']:x for x in old.get('upcoming',[]) if x['date']>=now.isoformat()}
+    for day in [d for d in FUTURE_DATES if d>=now.isoformat()][:8]:
+        date=dt.date.fromisoformat(day)
+        try:
+            schedule=table_rows(adapter['bleague_schedule'](season=SEASON,tab=1,month=date.month,day=date.day))
+            for row in schedule:
+                if not any(normalize_name(row.get(k))=='川崎' for k in ('home_team','away_team')):continue
+                home=normalize_name(row.get('home_team'))=='川崎'
+                if str(row.get('state') or '').upper() in ('CANCELLED','CANCELED','POSTPONED','中止','延期'):continue
+                if str(row.get('schedule_key')) in records:continue
+                upcoming[day]={'date':day,'id':str(row.get('schedule_key') or ''),'opponent':str(row.get('away_team' if home else 'home_team') or ''),'home':home,'venue':str(row.get('venue') or '')}
+        except Exception as e:
+            LOG.warning('Future fixture %s: %s',day,e)
+    completed_dates={g['date'] for g in records.values()}
+    result={'updated':dt.datetime.now(dt.timezone.utc).isoformat(),'games':sorted(records.values(),key=lambda g:(g['date'],g['id']),reverse=True),'errors':errors,'upcoming':sorted([x for x in upcoming.values() if x['date'] not in completed_dates],key=lambda x:x['date'])}
     save_atomic(OUTPUT,result)
     if not records:raise SystemExit('No Kawasaki official game data obtained')
 if __name__=='__main__':main()
