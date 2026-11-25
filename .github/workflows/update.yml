@@ -45,12 +45,16 @@ jobs:
           else
             python scripts/update_stats.py --recent-days 4 || echo 'WARNING: some games could not be synced; see logs'
           fi
+      - name: Update Kawasaki official play-by-play
+        run: python scripts/update_kawasaki.py
+        continue-on-error: true
       - name: Save the incremental cache and new public stats
         shell: bash
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -f cache/games_2026-27.json site/data.js 2>/dev/null || git add site/data.js
+          if [ -f site/kawasaki/data.json ]; then git add -f site/kawasaki/data.json; fi
           if ! git diff --staged --quiet; then
             git commit -m 'Update 2026-27 B.LEAGUE stats'
             git pull --rebase origin "${GITHUB_REF_NAME}"
