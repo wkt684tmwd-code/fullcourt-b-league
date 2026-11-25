@@ -29,6 +29,7 @@ def analyze(row, events, box):
     # EventNo is the official global sequence; period 0 and game-level markers are not playing time.
     events = sorted(events,key=lambda e:int(e['event_no']))
     last_period = max(int(e['period']) for e in events if e.get('period') is not None and int(e['period']) >= 1 and int(e.get('action_code') or 0) not in (80,81))
+    last_period = int(row.get('max_period') or last_period)
     duration = 2400 + max(0,last_period-4)*300
     score = [0,0]
     last = 0
@@ -65,6 +66,8 @@ def analyze(row, events, box):
         new=[int(hs),int(aw)] if home and hs is not None and aw is not None else [int(aw),int(hs)] if hs is not None and aw is not None else score[:]
         if not own_sub and new==score:
             continue
+        if own_sub and code==86 and str(e.get('player_id')) in active and new==score:
+            continue  # redundant starter/on-court announcement; no state change
         if period<1:
             if own_sub and code==86 and str(e.get('player_id')) in active:
                 continue  # pregame announcement of a confirmed starter
@@ -129,10 +132,14 @@ KNOWN_GAMES = dict(zip(
     '506391 506399 506405 506420 506437 506448 506464 506482 506489 506504 506510 506527 506538 506549 506562 506573 506581 506598 506611'.split()))
 # Remaining regular-season dates as published on the club's official 2026-27 schedule.
 # Update if the club announces rescheduling.
-FUTURE_DATES = '2026-12-06 2026-12-12 2026-12-13 2026-12-19 2026-12-20 2026-12-26 2026-12-27 2026-12-30 2027-01-01 2027-01-03 2027-01-22 2027-01-25 2027-01-27 2027-01-30 2027-01-31 2027-02-03 2027-02-05 2027-02-07 2027-02-11 2027-02-15 2027-02-17 2027-03-06 2027-03-07 2027-03-13 2027-03-14 2027-03-17 2027-03-19 2027-03-21 2027-03-24 2027-04-01 2027-04-04 2027-04-06 2027-04-09 2027-04-11 2027-04-13 2027-04-20 2027-04-23 2027-04-25 2027-04-28'.split()
+FUTURE_DATES = '2026-12-06 2026-12-12 2026-12-13 2026-12-19 2026-12-20 2026-12-26 2026-12-27 2026-12-30 2027-01-01 2027-01-03 2027-01-22 2027-01-25 2027-01-27 2027-01-30 2027-01-31 2027-02-03 2027-02-05 2027-02-07 2027-02-11 2027-02-15 2027-02-17 2027-03-06 2027-03-07 2027-03-13 2027-03-14 2027-03-17 2027-03-19 2027-03-21 2027-03-24 2027-04-01 2027-04-04 2027-04-06 2027-04-09 2027-04-11 2027-04-13 2027-04-20 2027-04-23 2027-04-25 2027-04-28 2027-04-30 2027-05-02'.split()
 def header_row(key, date):
     h=table_rows(bleague_game_info(schedule_key=int(key),season=SEASON))[0]
-    row={'schedule_key':key,'date':date}
+    official_date=dt.datetime.fromisoformat(str(h['game_datetime']).replace('Z','+00:00'))
+    if official_date.tzinfo is None:official_date=official_date.replace(tzinfo=dt.timezone.utc)
+    if official_date.astimezone(ZoneInfo('Asia/Tokyo')).date().isoformat()!=date:
+        raise ValueError('Official game date mismatch')
+    row={'schedule_key':key,'date':date,'max_period':h.get('max_period')}
     for side in ('home','away'):
         row[side+'_team']=h.get(side+'_team_name_j') or h.get(side+'_team_short_name_j')
         row[side+'_team_id']=h[side+'_team_id']
