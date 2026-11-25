@@ -1,5 +1,12 @@
 name: Update B.LEAGUE data and publish
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/update_kawasaki.py'
+      - 'site/kawasaki/index.html'
+      - '.github/workflows/update.yml'
+      - 'site/index.html'
   # Every 2h, with extra hourly checks around evening games (JST).
   schedule:
     - cron: '27 */2 * * *'
